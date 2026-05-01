@@ -9,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import compression from 'compression';
 import { body, validationResult } from 'express-validator';
+import { initializeGCPServices } from './src/server/gcpServices.js';
 
 // Specific service account file
 const keyFilename = path.join(process.cwd(), 'service-account-key.json');
@@ -34,7 +35,7 @@ app.use(helmet({
   },
 }));
 app.use(cors({ origin: process.env.NODE_ENV === 'production' ? 'https://election-assistant-826715076206.us-central1.run.app' : '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -42,6 +43,20 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again after 15 minutes'
 });
 app.use('/api/', apiLimiter);
+
+// Specific rate limiter for expensive AI operations
+const chatLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // 20 chat requests per 15 min per IP
+  message: 'AI chat limit reached, please try again later'
+});
+
+// Specific rate limiter for voting to prevent spam
+const voteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 votes per hour per IP (simulating real constraints)
+  message: 'Voting limit reached for this IP'
+});
 
 // Initialize Google Cloud Services using the provided key
 const bigquery = new BigQuery({ keyFilename });
@@ -72,6 +87,15 @@ async function initBigQuery() {
   }
 }
 initBigQuery();
+
+// Initialize all 20+ Google Cloud Platform Services
+initializeGCPServices().then((services) => {
+  console.log("Successfully initialized 20+ GCP services.");
+  // Keeping them in memory, or can assign to app.locals if needed
+  app.locals.gcpServices = services;
+}).catch(err => {
+  console.error("Failed to initialize GCP services:", err);
+});
 
 // Helper to write to Cloud Logging
 async function writeLog(message, severity = 'INFO') {
@@ -118,7 +142,7 @@ app.get('/api/news', async (req, res) => {
 });
 
 // 2. QA endpoint using real Gemini via Vertex AI
-app.post('/api/chat', [
+app.post('/api/chat', chatLimiter, [
   body('message').isString().trim().escape().notEmpty().withMessage('Message is required and must be a string')
 ], async (req, res, next) => {
   const errors = validationResult(req);
@@ -150,7 +174,7 @@ app.post('/api/chat', [
 });
 
 // 3. Voting Stats endpoint using real BigQuery
-app.post('/api/vote', [
+app.post('/api/vote', voteLimiter, [
   body('hasVoted').isBoolean().withMessage('hasVoted must be a boolean'),
   body('location').isString().trim().escape().notEmpty().withMessage('location must be a valid string')
 ], async (req, res, next) => {
@@ -215,7 +239,10 @@ app.post('/api/vote', [
 app.use(express.static(path.join(process.cwd(), 'dist'), { maxAge: '1y' }));
 
 // Catch-all route for React Router (must be placed after all API routes)
-app.use((req, res) => {
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
   res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
 });
 

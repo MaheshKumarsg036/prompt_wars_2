@@ -65,7 +65,6 @@ export default function ElectionAssistant() {
   }, [chatInput]);
 
   const submitVoteStatus = useCallback(async (status: boolean) => {
-    setHasVoted(status);
     try {
       const response = await fetch('/api/vote', {
         method: 'POST',
@@ -222,6 +221,7 @@ export default function ElectionAssistant() {
                 type="button" 
                 onClick={toggleRecording}
                 aria-label="Toggle voice recording"
+                aria-pressed={isRecording}
                 className={`absolute left-2 p-2 rounded-full transition-colors ${isRecording ? 'bg-red-100 text-red-500 animate-pulse' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}
               >
                 <Mic size={20} />
