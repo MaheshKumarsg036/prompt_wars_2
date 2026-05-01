@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { google } from 'googleapis';
 import * as path from 'path';
 

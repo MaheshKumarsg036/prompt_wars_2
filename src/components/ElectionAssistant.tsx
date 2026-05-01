@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Mic, Send, MapPin, Newspaper, MessageSquare, CheckCircle, XCircle } from 'lucide-react';
 
 interface NewsItem {
@@ -27,7 +27,6 @@ export default function ElectionAssistant() {
   ]);
   const [isRecording, setIsRecording] = useState(false);
   const [votingAtmosphere, setVotingAtmosphere] = useState<VotingAtmosphere | null>(null);
-  const [hasVoted, setHasVoted] = useState<boolean | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll chat
@@ -60,6 +59,7 @@ export default function ElectionAssistant() {
       const data = await response.json();
       setChatHistory(prev => [...prev, { role: 'assistant', content: data.response || "Sorry, I couldn't process that." }]);
     } catch (err) {
+      console.error("Chat error:", err);
       setChatHistory(prev => [...prev, { role: 'assistant', content: "Error connecting to AI service." }]);
     }
   }, [chatInput]);
@@ -75,7 +75,7 @@ export default function ElectionAssistant() {
       const data = await response.json();
       setVotingAtmosphere(data);
     } catch (err) {
-      console.error(err);
+      console.error("Vote submission error:", err);
     }
   }, []);
 
@@ -93,6 +93,7 @@ export default function ElectionAssistant() {
       recognition.continuous = false;
       recognition.interimResults = false;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setChatInput(transcript);
