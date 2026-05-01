@@ -1,8 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ElectionAssistant from './ElectionAssistant';
 
 // Mock fetch for the API calls
-global.fetch = jest.fn((url) => {
+global.fetch = vi.fn((url: string) => {
   if (url === '/api/news') {
     return Promise.resolve({
       json: () => Promise.resolve([{ id: 1, title: 'Test News', source: 'Test', time: '1h' }])
@@ -19,11 +20,11 @@ global.fetch = jest.fn((url) => {
     });
   }
   return Promise.reject(new Error('not found'));
-});
+}) as unknown as typeof fetch;
 
 describe('ElectionAssistant', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('renders the main layout', async () => {
@@ -59,6 +60,42 @@ describe('ElectionAssistant', () => {
     await waitFor(() => {
       expect(screen.getByText('Test atmosphere')).toBeInTheDocument();
       expect(screen.getByText('60%')).toBeInTheDocument();
+    });
+  });
+
+  it('handles negative voting submission', async () => {
+    render(<ElectionAssistant />);
+    
+    const notYetBtn = screen.getByText('Not Yet');
+    fireEvent.click(notYetBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test atmosphere')).toBeInTheDocument();
+    });
+  });
+
+  it('handles chat submission error gracefully', async () => {
+    // Override the mock to fail for this test
+    global.fetch = vi.fn((url: string) => {
+      if (url === '/api/chat') return Promise.reject(new Error('Network error'));
+      if (url === '/api/news') {
+        return Promise.resolve({
+          json: () => Promise.resolve([{ id: 1, title: 'Test News', source: 'Test', time: '1h' }])
+        });
+      }
+      return Promise.resolve({ json: () => Promise.resolve({}) });
+    }) as unknown as typeof fetch;
+
+    render(<ElectionAssistant />);
+    
+    const input = screen.getByPlaceholderText('Ask Gemini...');
+    fireEvent.change(input, { target: { value: 'Trigger error' } });
+    
+    const submitBtn = input.nextElementSibling;
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Error connecting to AI service.')).toBeInTheDocument();
     });
   });
 });
